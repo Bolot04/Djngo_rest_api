@@ -54,8 +54,5 @@ class ProductReviewSerializer(serializers.ModelSerializer):
         fields = 'id title reviews rating'.split()
 
     def get_rating(self, obj):
-        return obj.reviews.aggregate(
-            avg=Avg('stars')
-        )['avg']
-    
-
+        avg = obj.reviews.aggregate(avg=Avg('stars'))['avg']
+        return round(avg, 2) if avg else 0
