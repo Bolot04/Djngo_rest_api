@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db.models import Avg
 from .models import Category, Product, Review
 
 class CategoryDetailSerializer(serializers.ModelSerializer):
@@ -7,9 +8,11 @@ class CategoryDetailSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class CategorySerializer(serializers.ModelSerializer):
+    product_count = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = Category
-        fields = '__all__'
+        fields = 'id name product_count'.split()
 
  
 class ProductDetailSerializer(serializers.ModelSerializer):
@@ -18,13 +21,22 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class ReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Review
+        fields = ['text', 'stars']
+
 class ProductSerializer(serializers.ModelSerializer):
+
+    reviews = ReviewSerializer(many=True)
+
     class Meta:
         model = Product
-        # fields = ['id', 'title', 'description', 'price', 'category']
+        fields = ['id', 'title', 'description', 'reviews']
+        depth = 1
         # fields = 'id title description price category'.split()
         # fields ='__all__'
-        exclude = 'category price text'.split()
+        # exclude = 'category price'.split()
 
 
 class ReviewDetailSerializer(serializers.ModelSerializer):
@@ -33,7 +45,17 @@ class ReviewDetailSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class ReviewSerializer(serializers.ModelSerializer):
+class ProductReviewSerializer(serializers.ModelSerializer):
+    reviews = ReviewSerializer(many=True, read_only=True)
+    rating = serializers.SerializerMethodField()
+
     class Meta:
-        model = Review
-        fields = ['product']
+        model = Product
+        fields = 'id title reviews rating'.split()
+
+    def get_rating(self, obj):
+        return obj.reviews.aggregate(
+            avg=Avg('stars')
+        )['avg']
+    
+
