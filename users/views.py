@@ -1,97 +1,55 @@
-from rest_framework.decorators import api_view
+from rest_framework import generics, status
+from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from .serializers import UserCreateSerializer, UserAuthSerializer, UserConfirmSerializers
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from .models import UserConfirmCode
-from .utils import generate_confirm_code
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
+
+from .serializers import RegisterSerializer, ConfirmSerializer, LoginSerializer
+from .models import ConfirmationCode
 
 
-@api_view(['POST'])
-def authorization_api_view(request):
-    serializer = UserAuthSerializer(data=request.data)
-    Serializer.is_valid(raise_exception=True)
+
+class RegisterView(generics.CreateAPIView):
+    serializer_class = RegisterSerializer
+    queryset = User.objects.all()
 
 
-    data = serializer.validated_data
-    username = data['username']
-    password = data['password']
+class ConfirmView(APIView):
+    def post(self, request):
+        serializer = ConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-    user = authenticate(username=username, password=password)
+        code = serializer.validated_data["code"]
 
-    if user:
         try:
-            token = Token.objects.get(user=user)
-        except:
-            token = Token.objects.create(user=user)
-        return Response(data={'key': token.key})
-    return Response(status=status.HTTP_401_UNAUTHORIZED)
+            conf = ConfirmationCode.objects.get(code=code)
+        except ConfirmationCode.DoesNotExist:
+            return Response({"error": "Неверный код"}, status=400)
+
+        user = conf.user
+        user.is_active = True
+        user.save()
+
+        conf.delete()
+
+        return Response({"message": "Аккаунт подтвержден"})
 
 
-@api_view(['POST'])
-def registration_api_view(request):
-    serializer = UserCreateSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
+class LoginView(APIView):
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-
-    data = serializer.validated_data
-
-
-    user = User.objects.create_user(
-        username = data['username'],
-        email=data['email'],
-        password = data['password'],
-        is_active=False
-    )
-
-
-    code = generate_confirm_code()
-    UserConfirmCode.objects.create(
-        user=user,
-        code=code
-    )
-
-    return Response(
-        {
-            "message": "User created. Confirm eamil.",
-            "user_id": user.id
-        },
-        status=status.HTTP_201_CREATED,
+        user = authenticate(
+            username = serializer.validated_data["username"],
+            password = serializer.validated_data["password"]
         )
 
+        if not user:
+            return Response({"error": "Неверные данные"}, status=400)
+        if not user.is_active:
+            return Response({"error": "Аккаунт не активирован"}, status=400)
 
-@api_view(['POST'])
-def confirm_user_api_view():
-    serializer = UserConfirmSerializers(data=request.data)
-    serializer.is_valid(raise_exception=True)
-
-
-    data = serializer.validated_data
-    user_id = data['user_id']
-    code = data['cose']
-
-
-    try:
-        confirm = UserConfirmCode.objects.get(
-            user_id=user_id,
-            code=code
-        )
-    except UserConfirmCode.DoesNotExist:
-        return Response(
-            {"error": "Invalid confirm code!"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-
-    user = confirm.user
-    user.is_active = True
-    user.save()
-
-    confirm.delete()
-
-    return Response(
-        {"message": "User confirmed successfully"},
-        status=status.HTTP_200_ok
-    )
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({"token": token.key})
