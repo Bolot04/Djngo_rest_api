@@ -3,53 +3,94 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
-from django.contrib.auth.models import User
+from django.db import transaction
 
 from .serializers import RegisterSerializer, ConfirmSerializer, LoginSerializer
-from .models import ConfirmationCode
-
+from .models import ConfirmationCode, CustomUser
+import random 
+import string
 
 
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
-    queryset = User.objects.all()
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
+        email = serializer.validated_data['email']
+        password = serializer.validated_data['password']
+
+        # Use transaction to ensure data consistency
+        with transaction.atomic():
+            user = CustomUser.objects.create_user(
+                email=email,
+                password=password,
+                is_active=False
+            )
+
+            # Create a random 6-digit code
+            code = ''.join(random.choices(string.digits, k=6))
+
+            confirmation_code = ConfirmationCode.objects.create(
+                user=user,
+                code=code
+            )
+
+        return Response(
+            status=status.HTTP_201_CREATED,
+            data={
+                'user_id': user.id,
+                'confirmation_code': code
+            }
+        )
 
 class ConfirmView(APIView):
+    serializer_class=ConfirmSerializer
+
     def post(self, request):
         serializer = ConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        code = serializer.validated_data["code"]
+        user_id = serializer.validated_data['user_id']
 
-        try:
-            conf = ConfirmationCode.objects.get(code=code)
-        except ConfirmationCode.DoesNotExist:
-            return Response({"error": "Неверный код"}, status=400)
+        with transaction.atomic():
+            user = CustomUser.objects.get(id=user_id)
+            user.is_active = True
+            user.save()
 
-        user = conf.user
-        user.is_active = True
-        user.save()
+            token, _ = Token.objects.get_or_create(user=user)
 
-        conf.delete()
+            ConfirmationCode.objects.filter(user=user).delete()
 
-        return Response({"message": "Аккаунт подтвержден"})
+        return Response(
+            status=status.HTTP_200_OK,
+            data={
+                'message': 'User аккаунт успешно активирован',
+                'key': token.key
+            }
+        )
+
 
 
 class LoginView(APIView):
+    serializer_class = LoginSerializer
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user = authenticate(
-            username = serializer.validated_data["username"],
-            password = serializer.validated_data["password"]
+        user = authenticate(**serializer.validated_data)
+
+        if user:
+            if not user.is_active:
+                return Response(
+                    status=status.HTTP_401_UNAUTHORIZED,
+                    data={'error': 'User account is not activated yet!'}
+                )
+
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response(data={'key': token.key})
+
+        return Response(
+            status=status.HTTP_401_UNAUTHORIZED,
+            data={'error': 'User credentials are wrong!'}
         )
-
-        if not user:
-            return Response({"error": "Неверные данные"}, status=400)
-        if not user.is_active:
-            return Response({"error": "Аккаунт не активирован"}, status=400)
-
-        token, _ = Token.objects.get_or_create(user=user)
-        return Response({"token": token.key})

@@ -1,37 +1,50 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
-from .models import ConfirmationCode
+from rest_framework.exceptions import ValidationError
+from .models import ConfirmationCode, CustomUser
 import random
 
+
+class UserBaseSerializer(serializers.Serializer):
+    email = serializers.CharField(max_length=150)
+    password = serializers.CharField()
+
+
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
-    confirmation_code = serializers.CharField(read_only=True)
-
     class Meta:
-        model = User
-        fields = ["id", "username", "email", "password", "confirmation_code"]
-
-    def create(self, validated_data):
-        password = validated_data.pop("password")
-        user = User.objects.create(
-            username=validated_data["username"],
-            email=validated_data.get("email", ""),
-            is_active=False
-        )
-        user.set_password(password)
-        user.save()
-
-        code = str(random.randint(100000, 999999))
-        ConfirmationCode.objects.create(user=user, code=code)
-
-        user.confirmation_code = code  # просто для отображения
-        return user
+        model = CustomUser
+        fields = ('email', 'password')
+                
+    def validate_email(self, email):
+        try:
+            CustomUser.objects.get(email=email)
+        except:
+            return email
+        raise ValidationError('User уже существует!')
 
 
 class ConfirmSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
     code = serializers.CharField(max_length=6)
+
+    def validate(self, attrs):
+        user_id = attrs.get('user_id')
+        code = attrs.get('code')
+
+        try:
+            user = CustomUser.objects.get(id=user_id)
+        except CustomUser.DoesNotExist:
+            raise ValidationError('User не существует!')
+
+        try:
+            confirmation_code = ConfirmationCode.objects.get(user=user)
+        except ConfirmationCode.DoesNotExist:
+            raise ValidationError('Код подтверждения не найден!')
+
+        if confirmation_code.code != code:
+            raise ValidationError('Неверный код подтверждения!')
+
+        return attrs
 
 
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField()
-    password = serializers.CharField()
+    pass
