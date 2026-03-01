@@ -31,6 +31,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -39,7 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'product',
     'rest_framework',
-    'users.apps.UserConfig',
+    'users',
     'rest_framework.authtoken'
 ]
 
@@ -84,12 +85,14 @@ WSGI_APPLICATION = 'shop_api.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME'),
-        'USER': os.environ.get('DB_USER'),
-        'PASSWORD': os.environ.get('DB_PASSWORD'),
-        'HOST': os.environ.get('DB_HOST'),
-        'PORT': os.environ.get('DB_PORT'), 
+          "ENGINE": "django.db.backends.sqlite3",
+          "NAME": BASE_DIR / "db.sqlite3",
+    #     'ENGINE': 'django.db.backends.postgresql',
+    #     'NAME': os.environ.get('DB_NAME'),
+    #     'USER': os.environ.get('DB_USER'),
+    #     'PASSWORD': os.environ.get('DB_PASSWORD'),
+    #     'HOST': os.environ.get('DB_HOST'),
+    #     'PORT': os.environ.get('DB_PORT'), 
     }
 }
 
