@@ -7,6 +7,7 @@ class CustomUser(AbstractUser):
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     objects = CustomUserManager()
 
+    
     REQUIRED_FIELDS = ['email', 'phone_number']
 
     def __str__(self):
